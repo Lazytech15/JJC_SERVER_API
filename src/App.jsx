@@ -1,558 +1,473 @@
-import { useState, useEffect } from 'react'
-import './App.css'
-import InventoryApp from './components/Inventory'
-import { Routes, Route, useNavigate  } from 'react-router-dom';
+"use client"
+
+import { useState, useEffect } from "react"
+import "./App.css"
 
 function App() {
-  const [employees, setEmployees] = useState([])
-  const [stats, setStats] = useState({})
-  const [accessLevels, setAccessLevels] = useState([])
-  const [activeTab, setActiveTab] = useState('employees')
-  const [loading, setLoading] = useState(true)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [selectedAccessLevel, setSelectedAccessLevel] = useState('all')
-  const [newEmployee, setNewEmployee] = useState({ 
-    uid: '', 
-    first_name: '', 
-    last_name: '', 
-    middle_name: '', 
-    username: '', 
-    access_level: '',
-    password_salt: '',
-    password_hash: '',
-    tfa_salt: '',
-    tfa_hash: ''
-  })
-  const [editingEmployee, setEditingEmployee] = useState(null)
+  const [tunnelUrl, setTunnelUrl] = useState("")
+  const [serverStatus, setServerStatus] = useState("starting")
+  const [copySuccess, setCopySuccess] = useState(false)
+  const [apiEndpoints, setApiEndpoints] = useState([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [hasTunnel, setHasTunnel] = useState(false)
 
-  // Determine API base URL based on environment
-  const API_BASE = window.location.hostname.includes('trycloudflare.com') 
-    ? '/api'  // Use proxy when accessed via Cloudflare tunnel
-    : 'http://localhost:3001/api'  // Direct connection for local development
-
-  // Fetch data
-  const fetchEmployees = async () => {
+  // Function to read tunnel info from .tunnel-info file
+  const readTunnelInfo = async () => {
     try {
-      const response = await fetch(`${API_BASE}/employees`)
-      const data = await response.json()
-      setEmployees(data)
-    } catch (error) {
-      console.error('Error fetching employees:', error)
-    }
-  }
-
-  const fetchEmployeesByAccessLevel = async (level) => {
-    try {
-      const response = await fetch(`${API_BASE}/employees/access/${level}`)
-      const data = await response.json()
-      setEmployees(data)
-    } catch (error) {
-      console.error('Error fetching employees by access level:', error)
-    }
-  }
-
-  const searchEmployees = async (query) => {
-    try {
-      if (query.trim()) {
-        const response = await fetch(`${API_BASE}/employees/search/${encodeURIComponent(query)}`)
-        const data = await response.json()
-        setEmployees(data)
-      } else {
-        fetchEmployees()
-      }
-    } catch (error) {
-      console.error('Error searching employees:', error)
-    }
-  }
-
-  const fetchStats = async () => {
-    try {
-      const response = await fetch(`${API_BASE}/stats`)
-      const data = await response.json()
-      setStats(data)
-    } catch (error) {
-      console.error('Error fetching stats:', error)
-    }
-  }
-
-  const fetchAccessLevels = async () => {
-    try {
-      const response = await fetch(`${API_BASE}/access-levels`)
-      const data = await response.json()
-      setAccessLevels(data)
-    } catch (error) {
-      console.error('Error fetching access levels:', error)
-    }
-  }
-
-  useEffect(() => {
-    const loadData = async () => {
-      setLoading(true)
-      await Promise.all([fetchEmployees(), fetchStats(), fetchAccessLevels()])
-      setLoading(false)
-    }
-    loadData()
-  }, [])
-
-  // Handle search
-  useEffect(() => {
-    const delayedSearch = setTimeout(() => {
-      if (searchQuery) {
-        searchEmployees(searchQuery)
-      } else if (selectedAccessLevel !== 'all') {
-        fetchEmployeesByAccessLevel(selectedAccessLevel)
-      } else {
-        fetchEmployees()
-      }
-    }, 300)
-
-    return () => clearTimeout(delayedSearch)
-  }, [searchQuery])
-
-  // Handle access level filter
-  const handleAccessLevelFilter = (level) => {
-    setSelectedAccessLevel(level)
-    setSearchQuery('')
-    if (level === 'all') {
-      fetchEmployees()
-    } else {
-      fetchEmployeesByAccessLevel(level)
-    }
-  }
-
-  // Create new employee
-  const handleCreateEmployee = async (e) => {
-    e.preventDefault()
-    try {
-      const response = await fetch(`${API_BASE}/employees`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...newEmployee,
-          uid: parseInt(newEmployee.uid) || 0
-        })
-      })
-      if (response.ok) {
-        setNewEmployee({ 
-          uid: '', 
-          first_name: '', 
-          last_name: '', 
-          middle_name: '', 
-          username: '', 
-          access_level: '',
-          password_salt: '',
-          password_hash: '',
-          tfa_salt: '',
-          tfa_hash: ''
-        })
-        fetchEmployees()
-        fetchStats()
-        fetchAccessLevels()
-      } else {
-        const errorData = await response.json()
-        alert(`Error: ${errorData.error}`)
-      }
-    } catch (error) {
-      console.error('Error creating employee:', error)
-      alert('Error creating employee')
-    }
-  }
-
-  // Update employee
-  const handleUpdateEmployee = async (e) => {
-    e.preventDefault()
-    try {
-      const response = await fetch(`${API_BASE}/employees/${editingEmployee.uid}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editingEmployee)
-      })
-      if (response.ok) {
-        setEditingEmployee(null)
-        fetchEmployees()
-        fetchStats()
-      } else {
-        const errorData = await response.json()
-        alert(`Error: ${errorData.error}`)
-      }
-    } catch (error) {
-      console.error('Error updating employee:', error)
-      alert('Error updating employee')
-    }
-  }
-
-  // Delete employee
-  const handleDeleteEmployee = async (uid) => {
-    if (window.confirm('Are you sure you want to delete this employee?')) {
-      try {
-        const response = await fetch(`${API_BASE}/employees/${uid}`, { method: 'DELETE' })
-        if (response.ok) {
-          fetchEmployees()
-          fetchStats()
-        } else {
-          const errorData = await response.json()
-          alert(`Error: ${errorData.error}`)
+      // Try to read the .tunnel-info file from the current directory
+      if (window.fs && window.fs.readFile) {
+        try {
+          const tunnelInfoData = await window.fs.readFile('.tunnel-info', { encoding: 'utf8' })
+          const tunnelInfo = JSON.parse(tunnelInfoData.trim())
+          console.log("[v0] Read tunnel info from file:", tunnelInfo)
+          
+          // Return the tunnel info
+          return {
+            tunnelUrl: tunnelInfo.tunnel_url || tunnelInfo.url,
+            localApiUrl: tunnelInfo.local_url || tunnelInfo.local_api_url || "http://localhost:3001",
+            hasTunnel: !!(tunnelInfo.tunnel_url || tunnelInfo.url),
+            port: tunnelInfo.port || 3001
+          }
+        } catch (fileError) {
+          console.log("[v0] Could not read .tunnel-info file:", fileError.message)
+          // Fallback to default values
+          return {
+            tunnelUrl: "http://localhost:3001",
+            localApiUrl: "http://localhost:3001", 
+            hasTunnel: false,
+            port: 3001
+          }
         }
-      } catch (error) {
-        console.error('Error deleting employee:', error)
-        alert('Error deleting employee')
+      }
+      
+      // If window.fs is not available, return default
+      return {
+        tunnelUrl: "http://localhost:3001",
+        localApiUrl: "http://localhost:3001",
+        hasTunnel: false,
+        port: 3001
+      }
+    } catch (error) {
+      console.error("[v0] Error reading tunnel info:", error)
+      return {
+        tunnelUrl: "http://localhost:3001", 
+        localApiUrl: "http://localhost:3001",
+        hasTunnel: false,
+        port: 3001
       }
     }
   }
 
-  if (loading) {
+  useEffect(() => {
+    const getNetworkInfo = async () => {
+      if (window.electronAPI) {
+        try {
+          const networkInfo = await window.electronAPI.getNetworkInfo()
+          console.log("[v0] Received network info:", networkInfo) // Debug log
+
+          const baseUrl = networkInfo.tunnelUrl || networkInfo.localApiUrl || "http://localhost:3001"
+          setTunnelUrl(baseUrl)
+          setHasTunnel(networkInfo.hasTunnel || false)
+
+          if (networkInfo.hasTunnel) {
+            setServerStatus("running")
+          } else {
+            setServerStatus("local")
+          }
+
+          generateApiEndpoints(baseUrl)
+          setIsLoading(false)
+        } catch (error) {
+          console.error("Error getting network info:", error)
+          // Fallback to reading tunnel info file
+          const tunnelInfo = await readTunnelInfo()
+          const baseUrl = tunnelInfo.hasTunnel ? tunnelInfo.tunnelUrl : tunnelInfo.localApiUrl
+          
+          setTunnelUrl(baseUrl)
+          setServerStatus(tunnelInfo.hasTunnel ? "running" : "local")
+          setHasTunnel(tunnelInfo.hasTunnel)
+          generateApiEndpoints(baseUrl)
+          setIsLoading(false)
+        }
+      } else {
+        // No electronAPI available, read from tunnel info file
+        const tunnelInfo = await readTunnelInfo()
+        const baseUrl = tunnelInfo.hasTunnel ? tunnelInfo.tunnelUrl : tunnelInfo.localApiUrl
+        
+        setTunnelUrl(baseUrl)
+        setServerStatus(tunnelInfo.hasTunnel ? "running" : "local")
+        setHasTunnel(tunnelInfo.hasTunnel)
+        generateApiEndpoints(baseUrl)
+        setIsLoading(false)
+      }
+    }
+
+    // Initial network info fetch
+    getNetworkInfo()
+
+    if (window.electronAPI) {
+      // Listen for tunnel URL updates from the main process
+      window.electronAPI.onTunnelUrlUpdated((newTunnelUrl) => {
+        console.log("🎉 [TUNNEL URL UPDATED]:", newTunnelUrl)
+        setTunnelUrl(newTunnelUrl)
+        setHasTunnel(newTunnelUrl && newTunnelUrl.includes(".trycloudflare.com"))
+        setServerStatus(newTunnelUrl && newTunnelUrl.includes(".trycloudflare.com") ? "running" : "local")
+        generateApiEndpoints(newTunnelUrl)
+        setIsLoading(false)
+      })
+
+      // Listen for tunnel logs and display them in browser console
+      window.electronAPI.onTunnelLog((logData) => {
+        console.log(`[TUNNEL ${logData.type.toUpperCase()}] ${logData.timestamp}:`, logData.message)
+      })
+
+      // Listen for tunnel URL detection and highlight it
+      window.electronAPI.onTunnelUrlFound((urlData) => {
+        console.log(`🎉 [TUNNEL URL DETECTED] ${urlData.timestamp}:`, urlData.url)
+        console.log(`📋 [FULL LOG]:`, urlData.fullLog)
+
+        // Filter and extract just the URL for easy copying
+        const urlMatch = urlData.fullLog.match(/(https:\/\/[a-z0-9-]+\.trycloudflare\.com)/i)
+        if (urlMatch) {
+          console.log(`🔗 [EXTRACTED URL]:`, urlMatch[1])
+        }
+      })
+    }
+
+    // Set up interval to periodically check network info and re-read tunnel file
+    const interval = setInterval(async () => {
+      if (!window.electronAPI) {
+        // If no electronAPI, periodically check the tunnel info file
+        const tunnelInfo = await readTunnelInfo()
+        const baseUrl = tunnelInfo.hasTunnel ? tunnelInfo.tunnelUrl : tunnelInfo.localApiUrl
+        
+        // Only update if the URL has changed
+        if (baseUrl !== tunnelUrl) {
+          setTunnelUrl(baseUrl)
+          setServerStatus(tunnelInfo.hasTunnel ? "running" : "local")
+          setHasTunnel(tunnelInfo.hasTunnel)
+          generateApiEndpoints(baseUrl)
+        }
+      } else {
+        // If electronAPI is available, use the existing method
+        getNetworkInfo()
+      }
+    }, 10000) // Every 10 seconds
+
+    return () => {
+      clearInterval(interval)
+      if (window.electronAPI) {
+        window.electronAPI.removeTunnelLogListeners()
+      }
+    }
+  }, [tunnelUrl]) // Add tunnelUrl as dependency to avoid infinite loops
+
+  const generateApiEndpoints = (baseUrl) => {
+    const endpoints = [
+      {
+        method: "GET",
+        path: "/api/employees",
+        description: "Get all employees",
+        example: `curl -X GET "${baseUrl}/api/employees"`,
+      },
+      {
+        method: "POST",
+        path: "/api/employees",
+        description: "Create new employee",
+        example: `curl -X POST "${baseUrl}/api/employees" \\
+  -H "Content-Type: application/json" \\
+  -d '{"uid": 1, "first_name": "John", "last_name": "Doe", "username": "johndoe", "access_level": "admin"}'`,
+      },
+      {
+        method: "PUT",
+        path: "/api/employees/:uid",
+        description: "Update employee by UID",
+        example: `curl -X PUT "${baseUrl}/api/employees/1" \\
+  -H "Content-Type: application/json" \\
+  -d '{"first_name": "Jane", "last_name": "Smith"}'`,
+      },
+      {
+        method: "DELETE",
+        path: "/api/employees/:uid",
+        description: "Delete employee by UID",
+        example: `curl -X DELETE "${baseUrl}/api/employees/1"`,
+      },
+      {
+        method: "GET",
+        path: "/api/employees/search/:query",
+        description: "Search employees",
+        example: `curl -X GET "${baseUrl}/api/employees/search/john"`,
+      },
+      {
+        method: "GET",
+        path: "/api/employees/access/:level",
+        description: "Get employees by access level",
+        example: `curl -X GET "${baseUrl}/api/employees/access/admin"`,
+      },
+      {
+        method: "GET",
+        path: "/api/stats",
+        description: "Get database statistics",
+        example: `curl -X GET "${baseUrl}/api/stats"`,
+      },
+      {
+        method: "GET",
+        path: "/api/access-levels",
+        description: "Get all access levels",
+        example: `curl -X GET "${baseUrl}/api/access-levels"`,
+      },
+    ]
+    setApiEndpoints(endpoints)
+  }
+
+  const copyToClipboard = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopySuccess(true)
+      setTimeout(() => setCopySuccess(false), 2000)
+    } catch (err) {
+      console.error("Failed to copy: ", err)
+    }
+  }
+
+  const getStatusInfo = () => {
+    switch (serverStatus) {
+      case "starting":
+        return { color: "bg-yellow-100 text-yellow-800", text: "Starting Server & Tunnel..." }
+      case "running":
+        return { color: "bg-green-100 text-green-800", text: "Public Access" }
+      case "local":
+        return { color: "bg-blue-100 text-blue-800", text: "Running Locally" }
+      default:
+        return { color: "bg-gray-100 text-gray-800", text: "Unknown Status" }
+    }
+  }
+
+  const statusInfo = getStatusInfo()
+
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading employee database...</p>
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Starting Employee Database</h2>
+          <p className="text-gray-600">Initializing server and reading tunnel configuration...</p>
+          <div className="mt-4 flex items-center justify-center space-x-2">
+            <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"></div>
+            <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: "0.1s" }}></div>
+            <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: "0.2s" }}></div>
+          </div>
         </div>
       </div>
     )
   }
 
   return (
-    <>
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white shadow">
-        <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-6">
             <div className="flex items-center">
-              <h1 className="text-3xl font-bold text-gray-900">Employee Management System</h1>
-              <div className="ml-4 px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
-                Connected
-              </div>
-            </div>
-            <div className="text-sm text-gray-500">
-              Database: {stats.database_path}
+              <h1 className="text-3xl font-bold text-gray-900">Employee Database API</h1>
+              <div className={`ml-4 px-3 py-1 rounded-full text-sm ${statusInfo.color}`}>{statusInfo.text}</div>
             </div>
           </div>
         </div>
       </header>
 
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white overflow-hidden shadow rounded-lg">
-            <div className="p-5">
-              <div className="flex items-center">
-                <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
-                  <span className="text-white font-semibold">👥</span>
-                </div>
-                <div className="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">Total Employees</dt>
-                    <dd className="text-lg font-medium text-gray-900">{stats.total_employees}</dd>
-                  </dl>
-                </div>
-              </div>
-            </div>
-          </div>
+        <div className="bg-white shadow rounded-lg mb-8 p-6">
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">
+            {hasTunnel ? "🌐 Public API Access" : "🏠 Local API Access"}
+          </h2>
 
-          {stats.access_levels && stats.access_levels.slice(0, 3).map((level, index) => (
-            <div key={level.access_level} className="bg-white overflow-hidden shadow rounded-lg">
-              <div className="p-5">
-                <div className="flex items-center">
-                  <div className={`w-8 h-8 ${['bg-green-500', 'bg-purple-500', 'bg-orange-500'][index]} rounded-full flex items-center justify-center`}>
-                    <span className="text-white font-semibold text-xs">{level.access_level?.charAt(0)?.toUpperCase()}</span>
-                  </div>
-                  <div className="ml-5 w-0 flex-1">
-                    <dl>
-                      <dt className="text-sm font-medium text-gray-500 truncate">{level.access_level || 'Unassigned'}</dt>
-                      <dd className="text-lg font-medium text-gray-900">{level.count}</dd>
-                    </dl>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Search and Filter Bar */}
-        <div className="bg-white shadow rounded-lg mb-6">
-          <div className="p-1">
-            <div className="flex flex-col md:flex-row gap-4">
+          <div className="bg-gray-50 rounded-lg p-4 mb-4">
+            <div className="flex items-center justify-between">
               <div className="flex-1">
-                <input
-                  type="text"
-                  placeholder="Search employees by name or username..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+                <label className="block text-sm font-medium text-gray-700 mb-2">API Base URL:</label>
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="text"
+                    value={tunnelUrl}
+                    readOnly
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 font-mono text-sm"
+                  />
+                  <button
+                    onClick={() => copyToClipboard(tunnelUrl)}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {copySuccess ? "✓ Copied!" : "Copy"}
+                  </button>
+                </div>
               </div>
-              <select
-                value={selectedAccessLevel}
-                onChange={(e) => handleAccessLevelFilter(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="all">All Access Levels</option>
-                {accessLevels.map(level => (
-                  <option key={level} value={level}>{level}</option>
-                ))}
-              </select>
+            </div>
+          </div>
+
+          {hasTunnel ? (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <span className="text-green-400">✓</span>
+                </div>
+                <div className="ml-3">
+                  <h3 className="text-sm font-medium text-green-800">Your database is now publicly accessible!</h3>
+                  <div className="mt-2 text-sm text-green-700">
+                    <p>
+                      This URL can be accessed from anywhere on the internet. Share it with your team or use it in your
+                      applications.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <span className="text-blue-400">ℹ</span>
+                </div>
+                <div className="ml-3">
+                  <h3 className="text-sm font-medium text-blue-800">Running in local mode</h3>
+                  <div className="mt-2 text-sm text-blue-700">
+                    <p>
+                      Your database is accessible locally. To enable public access, restart with tunnel mode enabled.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="bg-white shadow rounded-lg mb-8 p-6">
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">🔍 Tunnel Configuration</h2>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <span className="text-blue-400">💡</span>
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-blue-800">Reading Configuration</h3>
+                <div className="mt-2 text-sm text-blue-700">
+                  <p>
+                    The application reads tunnel configuration from the <code className="bg-blue-100 px-1 rounded">.tunnel-info</code> file in the root directory.
+                  </p>
+                  <p className="mt-1">
+                    This file should contain JSON with tunnel URL and local API configuration. The app automatically refreshes every 10 seconds to check for updates.
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Main Content */}
-        <div className="bg-white shadow rounded-lg">
-          <div className="border-b border-gray-200">
-            <nav className="-mb-px flex space-x-8" aria-label="Tabs">
-              <button
-                onClick={() => setActiveTab('employees')}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === 'employees'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Employees ({employees.length})
-              </button>
-              <button
-                onClick={() => setActiveTab('add')}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === 'add'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Add Employee
-              </button>
-            </nav>
+        <div className="bg-white shadow rounded-lg mb-8">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h2 className="text-xl font-semibold text-gray-900">📚 API Endpoints</h2>
+            <p className="mt-1 text-sm text-gray-600">Use these endpoints to interact with your employee database</p>
           </div>
 
-          <div className="p-1">
-            {activeTab === 'employees' && (
-              <div>
-                {/* Edit Employee Modal */}
-                {editingEmployee && (
-                  <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-                    <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
-                      <h3 className="text-lg font-bold text-gray-900 mb-4">Edit Employee</h3>
-                      <form onSubmit={handleUpdateEmployee} className="space-y-4">
-                        <input
-                          type="text"
-                          placeholder="First Name"
-                          value={editingEmployee.first_name || ''}
-                          onChange={(e) => setEditingEmployee({...editingEmployee, first_name: e.target.value})}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                          required
-                        />
-                        <input
-                          type="text"
-                          placeholder="Last Name"
-                          value={editingEmployee.last_name || ''}
-                          onChange={(e) => setEditingEmployee({...editingEmployee, last_name: e.target.value})}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                          required
-                        />
-                        <input
-                          type="text"
-                          placeholder="Middle Name"
-                          value={editingEmployee.middle_name || ''}
-                          onChange={(e) => setEditingEmployee({...editingEmployee, middle_name: e.target.value})}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                        />
-                        <input
-                          type="text"
-                          placeholder="Username"
-                          value={editingEmployee.username || ''}
-                          onChange={(e) => setEditingEmployee({...editingEmployee, username: e.target.value})}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                          required
-                        />
-                        <input
-                          type="text"
-                          placeholder="Access Level"
-                          value={editingEmployee.access_level || ''}
-                          onChange={(e) => setEditingEmployee({...editingEmployee, access_level: e.target.value})}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                        />
-                        <div className="flex gap-2">
-                          <button
-                            type="submit"
-                            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                          >
-                            Update
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setEditingEmployee(null)}
-                            className="flex-1 px-4 py-2 bg-gray-400 text-white rounded-md hover:bg-gray-500"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </form>
-                    </div>
+          <div className="p-6">
+            <div className="space-y-6">
+              {apiEndpoints.map((endpoint, index) => (
+                <div key={index} className="border border-gray-200 rounded-lg p-4">
+                  <div className="flex items-center space-x-3 mb-3">
+                    <span
+                      className={`px-2 py-1 text-xs font-semibold rounded ${
+                        endpoint.method === "GET"
+                          ? "bg-green-100 text-green-800"
+                          : endpoint.method === "POST"
+                            ? "bg-blue-100 text-blue-800"
+                            : endpoint.method === "PUT"
+                              ? "bg-yellow-100 text-yellow-800"
+                              : "bg-red-100 text-red-800"
+                      }`}
+                    >
+                      {endpoint.method}
+                    </span>
+                    <code className="text-sm font-mono text-gray-900">{endpoint.path}</code>
                   </div>
-                )}
 
-                {/* Employees Table */}
-                <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 rounded-lg">
-                  <table className="min-w-full divide-y divide-gray-300">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">UID</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Username</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Access Level</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Security</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {employees.map((employee) => (
-                        <tr key={employee.uid}>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{employee.uid}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                            {`${employee.last_name}, ${employee.first_name} ${employee.middle_name || ''}`}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{employee.username}</td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
-                              {employee.access_level || 'Unassigned'}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            <div className="flex space-x-2">
-                              <span className={`inline-flex px-2 py-1 text-xs rounded ${employee.password_hash ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                                PWD: {employee.password_hash ? '✓' : '✗'}
-                              </span>
-                              <span className={`inline-flex px-2 py-1 text-xs rounded ${employee.tfa_hash ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-                                2FA: {employee.tfa_hash ? '✓' : '✗'}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            <div className="flex space-x-2">
-                              <button
-                                onClick={() => setEditingEmployee(employee)}
-                                className="text-blue-600 hover:text-blue-900"
-                              >
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => handleDeleteEmployee(employee.uid)}
-                                className="text-red-600 hover:text-red-900"
-                              >
-                                Delete
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <p className="text-sm text-gray-600 mb-3">{endpoint.description}</p>
+
+                  <div className="bg-gray-900 rounded-md p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs text-gray-400">Example:</span>
+                      <button
+                        onClick={() => copyToClipboard(endpoint.example)}
+                        className="text-xs text-blue-400 hover:text-blue-300"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                    <pre className="text-sm text-green-400 overflow-x-auto">
+                      <code>{endpoint.example}</code>
+                    </pre>
+                  </div>
                 </div>
-              </div>
-            )}
+              ))}
+            </div>
+          </div>
+        </div>
 
-            {activeTab === 'add' && (
-              <div>
-                {/* Add Employee Form */}
-                <form onSubmit={handleCreateEmployee} className="max-w-2xl">
-                  <h3 className="text-lg font-medium mb-6">Add New Employee</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                    <input
-                      type="number"
-                      placeholder="Employee UID"
-                      value={newEmployee.uid}
-                      onChange={(e) => setNewEmployee({...newEmployee, uid: e.target.value})}
-                      className="px-3 py-2 border border-gray-300 rounded-md"
-                      required
-                    />
-                    <input
-                      type="text"
-                      placeholder="First Name"
-                      value={newEmployee.first_name}
-                      onChange={(e) => setNewEmployee({...newEmployee, first_name: e.target.value})}
-                      className="px-3 py-2 border border-gray-300 rounded-md"
-                      required
-                    />
-                    <input
-                      type="text"
-                      placeholder="Last Name"
-                      value={newEmployee.last_name}
-                      onChange={(e) => setNewEmployee({...newEmployee, last_name: e.target.value})}
-                      className="px-3 py-2 border border-gray-300 rounded-md"
-                      required
-                    />
-                    <input
-                      type="text"
-                      placeholder="Middle Name"
-                      value={newEmployee.middle_name}
-                      onChange={(e) => setNewEmployee({...newEmployee, middle_name: e.target.value})}
-                      className="px-3 py-2 border border-gray-300 rounded-md"
-                    />
-                    <input
-                      type="text"
-                      placeholder="Username"
-                      value={newEmployee.username}
-                      onChange={(e) => setNewEmployee({...newEmployee, username: e.target.value})}
-                      className="px-3 py-2 border border-gray-300 rounded-md"
-                      required
-                    />
-                    <input
-                      type="text"
-                      placeholder="Access Level"
-                      value={newEmployee.access_level}
-                      onChange={(e) => setNewEmployee({...newEmployee, access_level: e.target.value})}
-                      className="px-3 py-2 border border-gray-300 rounded-md"
-                    />
-                  </div>
-                  
-                  <div className="mb-6">
-                    <h4 className="text-md font-medium mb-3 text-gray-700">Security Information (Optional)</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <input
-                        type="text"
-                        placeholder="Password Salt"
-                        value={newEmployee.password_salt}
-                        onChange={(e) => setNewEmployee({...newEmployee, password_salt: e.target.value})}
-                        className="px-3 py-2 border border-gray-300 rounded-md"
-                      />
-                      <input
-                        type="text"
-                        placeholder="Password Hash"
-                        value={newEmployee.password_hash}
-                        onChange={(e) => setNewEmployee({...newEmployee, password_hash: e.target.value})}
-                        className="px-3 py-2 border border-gray-300 rounded-md"
-                      />
-                      <input
-                        type="text"
-                        placeholder="2FA Salt"
-                        value={newEmployee.tfa_salt}
-                        onChange={(e) => setNewEmployee({...newEmployee, tfa_salt: e.target.value})}
-                        className="px-3 py-2 border border-gray-300 rounded-md"
-                      />
-                      <input
-                        type="text"
-                        placeholder="2FA Hash"
-                        value={newEmployee.tfa_hash}
-                        onChange={(e) => setNewEmployee({...newEmployee, tfa_hash: e.target.value})}
-                        className="px-3 py-2 border border-gray-300 rounded-md"
-                      />
-                    </div>
-                  </div>
-                  
-                  <button
-                    type="submit"
-                    className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    Add Employee
-                  </button>
-                </form>
+        <div className="bg-white shadow rounded-lg">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h2 className="text-xl font-semibold text-gray-900">🚀 Quick Start</h2>
+          </div>
+
+          <div className="p-6">
+            <div className="prose max-w-none">
+              <h3 className="text-lg font-medium text-gray-900 mb-3">Getting Started</h3>
+
+              <ol className="list-decimal list-inside space-y-2 text-sm text-gray-700">
+                <li>Copy the API Base URL above</li>
+                <li>Use any HTTP client (curl, Postman, fetch, etc.) to make requests</li>
+                <li>All endpoints return JSON responses</li>
+                <li>POST and PUT requests require Content-Type: application/json header</li>
+              </ol>
+
+              <h3 className="text-lg font-medium text-gray-900 mt-6 mb-3">Employee Data Structure</h3>
+
+              <div className="bg-gray-900 rounded-md p-4">
+                <pre className="text-sm text-green-400">
+                  {`{
+  "uid": 1,
+  "first_name": "John",
+  "last_name": "Doe", 
+  "middle_name": "William",
+  "username": "johndoe",
+  "access_level": "admin",
+  "password_salt": "optional",
+  "password_hash": "optional",
+  "tfa_salt": "optional", 
+  "tfa_hash": "optional"
+}`}
+                </pre>
               </div>
-            )}
+
+              <h3 className="text-lg font-medium text-gray-900 mt-6 mb-3">Testing Your API</h3>
+
+              <p className="text-sm text-gray-700 mb-3">Try this command to test your API connection:</p>
+
+              <div className="bg-gray-900 rounded-md p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-gray-400">Test Connection:</span>
+                  <button
+                    onClick={() => copyToClipboard(`curl -X GET "${tunnelUrl}/api/stats"`)}
+                    className="text-xs text-blue-400 hover:text-blue-300"
+                  >
+                    Copy
+                  </button>
+                </div>
+                <pre className="text-sm text-green-400">
+                  <code>{`curl -X GET "${tunnelUrl}/api/stats"`}</code>
+                </pre>
+              </div>
+            </div>
           </div>
         </div>
       </main>
     </div>
-
-    <InventoryApp/>
-    </>
   )
 }
 
