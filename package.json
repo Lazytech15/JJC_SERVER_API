@@ -3,13 +3,32 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "main": "electron/main.js",
+  "homepage": "./",
   "scripts": {
+    "start": "npm run build && concurrently \"npm run server\" \"npm run preview\" \"npm run tunnel:only\"",
     "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "dev:public": "concurrently \"npm run server\" \"npm run client\" \"npm run tunnel:only\"",
     "client": "vite",
     "server": "node server/index.js",
+    "tunnel": "npm run build && node electron/tunnel-launcher.js",
+    "tunnel:only": "cloudflared tunnel --url http://localhost:4173",
+    "tunnel:ip": "cloudflared tunnel --url http://192.168.68.142:5173",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    
+    "electron": "electron .",
+    "electron:dev": "concurrently \"npm run server\" \"npm run client\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron:build": "npm run build && electron-builder",
+    "electron:build:win": "npm run build && electron-builder --win",
+    "electron:build:win64": "npm run build && electron-builder --win --x64",
+    "electron:build:win32": "npm run build && electron-builder --win --ia32",
+    "electron:dist": "npm run build && electron-builder --publish=never",
+    "electron:dist:win": "npm run build && electron-builder --win --publish=never",
+    "electron:pack": "npm run build && electron-builder --dir",
+    
+    "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.12",
@@ -27,10 +46,45 @@
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",
     "@vitejs/plugin-react": "^5.0.0",
+    "electron": "^33.7.1",
+    "electron-builder": "^25.3.3",
     "eslint": "^9.33.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^16.3.0",
-    "vite": "^7.1.2"
+    "vite": "^7.1.2",
+    "wait-on": "^8.0.1"
+  },
+  "build": {
+    "appId": "com.fetchdata.app",
+    "productName": "FetchData",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "dist/**/*",
+      "server/**/*",
+      "electron/**/*",
+      "node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "server",
+        "to": "server"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }
